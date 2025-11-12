@@ -14,7 +14,7 @@
 	evasion = XENO_EVASION_NONE
 	speed = XENO_SPEED_TIER_4
 
-	available_strains = list(/datum/xeno_strain/eggsac)
+	available_strains = list(/datum/xeno_strain/eggsac, /datum/xeno_strain/tosser)
 	behavior_delegate_type = /datum/behavior_delegate/carrier_base
 
 	evolution_allowed = FALSE
@@ -215,7 +215,7 @@
 		return
 
 	if(huggers_max > 0 && huggers_cur < huggers_max)
-		if(F.stat != DEAD && !F.sterile)
+		if(F.stat != DEAD && !F.sterile && !F.lesser_hugger)
 			huggers_cur++
 			to_chat(src, SPAN_NOTICE("We take a facehugger and carry it for safekeeping. Now sheltering: [huggers_cur] / [huggers_max]."))
 			update_icons()
@@ -295,28 +295,9 @@
 		F = new(src, hivenumber)
 		huggers_cur--
 		put_in_active_hand(F)
-		to_chat(src, SPAN_XENONOTICE("We grab one of the facehugger in our storage. Now sheltering: [huggers_cur] / [huggers_max]."))
+		to_chat(src, SPAN_XENONOTICE("We grab one of the facehuggers in our storage. Now sheltering: [huggers_cur] / [huggers_max]."))
 		update_icons()
 		return
-
-	if(!istype(F)) //something else in our hand
-		to_chat(src, SPAN_WARNING("We need a facehugger in our hand to throw one!"))
-		return
-
-	if(!threw_a_hugger)
-		threw_a_hugger = TRUE
-		for(var/X in actions)
-			var/datum/action/A = X
-			A.update_button_icon()
-		drop_inv_item_on_ground(F)
-		F.throw_atom(T, 4, caste.throwspeed)
-		visible_message(SPAN_XENOWARNING("\The [src] throws something towards \the [T]!"),
-			SPAN_XENOWARNING("We throw a facehugger towards \the [T]!"))
-		spawn(caste.hugger_delay)
-			threw_a_hugger = 0
-			for(var/X in actions)
-				var/datum/action/A = X
-				A.update_button_icon()
 
 /mob/living/carbon/xenomorph/carrier/proc/store_egg(obj/item/xeno_egg/E)
 	if(E.hivenumber != hivenumber)

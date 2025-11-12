@@ -18,6 +18,8 @@
 	var/per_stage_hugged_time = 90 //Set in Initialize due to config
 	/// How How many units of stims are drained per tick
 	var/stim_drain = 2
+	/// Lesser embryos eventually die out, unless the host is secured in a nest
+	var/lesser_embryo = FALSE
 
 /obj/item/alien_embryo/Initialize(mapload, ...)
 	. = ..()
@@ -101,6 +103,8 @@
 				counter += 0.11 * hive.larva_gestation_multiplier * delta_time
 		else if(is_nested) //Hosts who are nested in resin nests provide an ideal setting, larva grows faster
 			counter += 1.5 * hive.larva_gestation_multiplier * delta_time //Currently twice as much, can be changed
+			to_chat(affected_mob, SPAN_NOTICE("As tendrils from the nest cover your body, you feel the embryo inside swell with strength..."))
+			lesser_embryo = FALSE
 		else
 			if(stage < 5)
 				counter += 1 * hive.larva_gestation_multiplier * delta_time
@@ -115,7 +119,7 @@
 	switch(stage)
 		if(2)
 			if(prob(4))
-				if(!HAS_TRAIT(src, TRAIT_KNOCKEDOUT))
+				if(!HAS_TRAIT(src, TRAIT_KNOCKEDOUT) || !lesser_embryo)
 					affected_mob.pain.apply_pain(PAIN_CHESTBURST_WEAK)
 					affected_mob.visible_message(SPAN_DANGER("[affected_mob] starts shaking uncontrollably!"),
 												SPAN_DANGER("You feel something moving inside you! You start shaking uncontrollably!"))
@@ -140,10 +144,20 @@
 					affected_mob.pain.apply_pain(PAIN_CHESTBURST_WEAK)
 					affected_mob.visible_message(SPAN_DANGER("\The [affected_mob] starts shaking uncontrollably!"),
 												SPAN_DANGER("You feel something moving inside you! You start shaking uncontrollably!"))
-					affected_mob.apply_effect(2, PARALYZE)
+					if(!lesser_embryo)
+						affected_mob.apply_effect(2, PARALYZE)
 					affected_mob.make_jittery(105)
 					affected_mob.take_limb_damage(1)
 		if(4)
+			if(lesser_embryo)
+				// The embryo dies out, too weak to continue
+				to_chat(affected_mob, SPAN_WARNING("The thrashing in your chest subsides, but a feeling of intense discomfort replaces it..."))
+				affected_mob.reagents.add_reagent("host_stabilizer", 15)
+				for(var/i in 1 to 3)
+					affected_mob.apply_internal_damage(20, pick("heart", "lungs", "liver"))
+				affected_mob.status_flags &= ~(XENO_HOST)
+				STOP_PROCESSING(SSobj, src)
+				qdel(src)
 			if(prob(2))
 				affected_mob.pain.apply_pain(PAIN_CHESTBURST_WEAK)
 				var/message = pick("Your chest hurts badly", "It becomes difficult to breathe", "Your heart starts beating rapidly, and each beat is painful")
@@ -390,3 +404,18 @@
 		victim.chestburst = 2
 		victim.update_burst()
 		victim.death(cause) // Certain species were still surviving bursting (predators), DEFINITELY kill them this time.
+
+/obj/item/alien_embryo/lesser
+	name = "small alien embryo"
+	desc = "All slimy and yucky. Looks very underdeveloped."
+	icon = 'icons/mob/xenos/castes/tier_0/larva.dmi'
+	icon_state = "Embryo"
+	larva_autoburst_countdown = 10
+	flags_embryo = FLAG_EMBRYO_LESSER
+	per_stage_hugged_time = 70
+	stim_drain = 1
+	lesser_embryo = TRUE
+
+/obj/item/alien_embryo/lesser/Initialize(mapload, ...)
+	..()
+	transform *= 0.75

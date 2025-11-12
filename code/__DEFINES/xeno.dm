@@ -104,6 +104,7 @@
 #define EGG_MAX_GROWTH_TIME 150
 
 #define FLAG_EMBRYO_PREDATOR 1 // Useful for passing down flags from an egg to the very moment an embryo is in someone
+#define FLAG_EMBRYO_LESSER 2
 
 #define XENO_STARTING_CRYSTAL 100 //How much building resource the queen gets to start with
 
@@ -411,6 +412,7 @@
 
 // Carrier strain flags
 #define CARRIER_EGGSAC "Eggsac"
+#define CARRIER_TOSSER "Tosser"
 
 // Boiler strain flags
 #define BOILER_TRAPPER "Trapper"

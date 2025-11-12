@@ -26,19 +26,21 @@
 	flags_armor_protection = BODY_FLAG_FACE|BODY_FLAG_EYES
 	flags_atom = NO_FLAGS
 	flags_item = NOBLUDGEON
-	throw_range = 1
+	throw_speed = SPEED_SLOW
+	throw_range = 4
 	vision_impair = VISION_IMPAIR_MAX
 	layer = FACEHUGGER_LAYER
 	black_market_value = 20
 
 	var/stat = CONSCIOUS //UNCONSCIOUS is the idle state in this case
 	var/sterile = FALSE
-	var/strength = 5
 	var/attached = FALSE
 	var/leaping = FALSE //Is actually attacking someone?
 	var/hivenumber = XENO_HIVE_NORMAL
 	var/flags_embryo = NO_FLAGS
 	var/impregnated = FALSE
+	/// The type of embryo this facehugger implants
+	var/embryo_type = /obj/item/alien_embryo
 	/// How many units of stims are drained upon hugging
 	var/stim_drain = 30
 
@@ -55,8 +57,16 @@
 	var/time_to_live = 30 SECONDS
 	var/death_timer
 
+	var/minimum_active_time = MIN_ACTIVE_TIME
+	var/maximum_active_time = MAX_ACTIVE_TIME
+
 	var/icon_xeno = 'icons/mob/xenos/effects.dmi'
 	var/icon_xenonid = 'icons/mob/xenonids/castes/tier_0/xenonid_crab.dmi'
+	/// Used by lesser facehuggers. Prevents attaching to marines if their helmet is undamaged.
+	var/blocked_by_helmet = FALSE
+	/// Latches on instantly if thrown on.
+	var/lesser_hugger = FALSE
+	var/xeno_throw_time = 1 SECONDS
 
 /obj/item/clothing/mask/facehugger/Initialize(mapload, hive)
 	. = ..()
@@ -87,6 +97,14 @@
 
 /obj/item/clothing/mask/facehugger/ex_act(severity)
 	die()
+
+/obj/item/clothing/mask/facehugger/try_to_throw(mob/living/user)
+	if(isxeno(user))
+		to_chat(user, SPAN_NOTICE("You prepare to throw [src]."))
+		if(!do_after(user, xeno_throw_time, INTERRUPT_ALL|BEHAVIOR_IMMOBILE, BUSY_ICON_HOSTILE))
+			return FALSE
+		return TRUE
+	return ..()
 
 /obj/item/clothing/mask/facehugger/dropped()
 	. = ..()
@@ -243,7 +261,7 @@
 		..()
 		return
 
-	if(stat == UNCONSCIOUS)
+	if(stat == UNCONSCIOUS && (!lesser_hugger))
 		return
 
 	// Force reset throw now because [/atom/movable/proc/launch_impact] only does that later on
@@ -251,7 +269,7 @@
 	throwing = FALSE
 	rebounding = FALSE
 
-	if(leaping && can_hug(L, hivenumber))
+	if((lesser_hugger ||leaping) && can_hug(L, hivenumber))
 		attach(L)
 	else if(L.density)
 		step(src, turn(dir, 180)) //We want the hugger to bounce off if it hits a mob.
@@ -308,15 +326,17 @@
 	icon_state = initial(icon_state)
 	human.equip_to_slot(src, WEAR_FACE)
 	human.update_inv_wear_mask()
-	human.disable_lights()
-	human.disable_special_items()
+	if(!lesser_hugger)
+		human.disable_lights()
+		human.disable_special_items()
 	if(ishuman_strict(human))
 		playsound(loc, human.gender == "male" ? "male_hugged" : "female_hugged" , 25, 0)
 	else if(isyautja(human))
 		playsound(loc, 'sound/voice/pred_facehugged.ogg', 65, FALSE)
 	if(!sterile)
 		if(!human.species || !(human.species.flags & IS_SYNTHETIC)) //synthetics aren't paralyzed
-			human.apply_effect(MIN_IMPREGNATION_TIME * 0.5 * knockout_mod, PARALYZE) //THIS MIGHT NEED TWEAKS
+			if(!lesser_hugger) // lessers do not stun
+				human.apply_effect(MIN_IMPREGNATION_TIME * 0.5 * knockout_mod, PARALYZE) //THIS MIGHT NEED TWEAKS
 			for(var/datum/reagent/generated/stim in human.reagents.reagent_list) // Banish them stims
 				human.reagents.remove_reagent(stim.id, stim_drain, TRUE)
 
@@ -352,7 +372,7 @@
 			else
 				qdel(embryo)
 		if(!embryos)
-			var/obj/item/alien_embryo/embryo = new /obj/item/alien_embryo(target)
+			var/obj/item/alien_embryo/embryo = new embryo_type(target)
 			embryo.hivenumber = hivenumber
 			embryo.hugger_ckey = hugger_ckey
 			GLOB.player_embryo_list += embryo
@@ -546,12 +566,18 @@
 					return FALSE
 				can_infect = FALSE
 			else
-				visible_message(SPAN_DANGER("[hugger] smashes against [src]'s [D.name] and rips it off!"))
-				drop_inv_item_on_ground(D)
+				var/dead_hugger = FALSE
 				if(istype(D, /obj/item/clothing/head/helmet/marine)) //Marine helmets now get a fancy overlay.
 					var/obj/item/clothing/head/helmet/marine/m_helmet = D
+					// if lesser hugger & helmet not damaged, dies after damaging it
+					if(hugger.lesser_hugger && !(m_helmet.flags_marine_helmet & HELMET_IS_DAMAGED))
+						dead_hugger = TRUE
+						hugger.die()
 					m_helmet.add_hugger_damage()
+				visible_message(SPAN_DANGER("[hugger] smashes against [src]'s [D.name] and rips it off[dead_hugger ? ", dying in the process!" : "!"]"))
+				drop_inv_item_on_ground(D)
 				update_inv_head()
+				return
 
 	if(!wear_mask)
 		return can_infect
@@ -603,3 +629,31 @@
 		return FALSE
 
 	return TRUE
+
+/obj/item/clothing/mask/facehugger/lesser
+	name = "lesser facehugger"
+	desc = "It has some sort of a tube at the end of its tail. It's very small."
+	icon_state = "facehugger"
+	item_state = "facehugger"
+	// Can be removed
+	flags_inventory = COVEREYES|ALLOWINTERNALS|COVERMOUTH|ALLOWREBREATH
+	time_to_unequip = 1 SECONDS
+	flags_armor_protection = BODY_FLAG_FACE|BODY_FLAG_EYES
+	throw_range = 4
+	layer = FACEHUGGER_LAYER
+	black_market_value = 25 //cuter
+	// No flags_embryo as we just change the embryo type directly
+	embryo_type = /obj/item/alien_embryo/lesser
+	stim_drain = 15
+	time_between_jumps = 2 SECONDS
+	jumps_left = 2
+	time_to_live = 15 SECONDS
+	minimum_active_time = 0.5 SECONDS // 1 seconds would probably be smarter
+	maximum_active_time = 3 SECONDS
+	blocked_by_helmet = TRUE
+	lesser_hugger = TRUE
+	xeno_throw_time = 0.5 SECONDS
+
+/obj/item/clothing/mask/facehugger/lesser/Initialize(mapload, hive)
+	. = ..()
+	transform *= 0.75 //Make it smaller
